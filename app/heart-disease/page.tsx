@@ -100,8 +100,7 @@ export default function HeartDisease() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    setResult(null);
-
+    
     try {
       const payload = {
         age: parseInt(formData.age),
@@ -123,12 +122,16 @@ export default function HeartDisease() {
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) throw new Error("Failed to get prediction");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Request failed with status ${response.status}`);
+      }
 
       const data = await response.json();
       setResult(data);
-    } catch {
-      setError("An error occurred while processing your request. Please try again.");
+    } catch (err: any) {
+      console.error("Prediction error:", err);
+      setError(err.message || "An error occurred while processing your request. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -456,7 +459,7 @@ export default function HeartDisease() {
               <div className="pt-6 animate-fade-in-up delay-500">
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !isBackendReady}
                   className="group relative w-full overflow-hidden bg-white hover:bg-linear-to-r hover:from-red-50 hover:to-pink-50 text-red-600 py-5 rounded-2xl font-bold text-xl shadow-2xl hover:shadow-[0_20px_60px_-15px_rgba(239,68,68,0.5)] active:translate-y-0 active:scale-100 transition-all duration-500 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:scale-100 flex justify-center items-center gap-3 cursor-pointer"
                 >
                   {/* Animated gradient background on hover */}
@@ -569,7 +572,7 @@ export default function HeartDisease() {
                         </div>
                       ) : (
                         <>
-                          {result.advice.suggestions?.suggestions.map((suggestion, index) => (
+                          {result.advice.suggestions?.suggestions?.map((suggestion, index) => (
                             <div key={index} className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm p-6 rounded-2xl shadow-md border-2 border-gray-100/50 dark:border-gray-700/50 hover:shadow-xl hover:border-red-300 dark:hover:border-red-600 transition-all duration-300">
                               <div className="flex justify-between items-start mb-4">
                                 <h4 className="text-lg font-bold text-gray-900 dark:text-white">{suggestion.title}</h4>

@@ -25,7 +25,7 @@ interface PredictionResult {
     suggestions: {
       suggestions: Suggestion[];
       note: string;
-    };
+    } | null;
   };
 }
 
@@ -99,8 +99,7 @@ export default function Diabetes() {
     e.preventDefault();
     setLoading(true);
     setError("");
-    setResult(null);
-
+    
     try {
       const payload = {
         gender: parseInt(formData.gender),
@@ -121,12 +120,16 @@ export default function Diabetes() {
         body: JSON.stringify(payload),
       });
 
-      if (!response.ok) throw new Error("Failed to get prediction");
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || `Request failed with status ${response.status}`);
+      }
 
       const data = await response.json();
       setResult(data);
-    } catch {
-      setError("An error occurred while processing your request. Please try again.");
+    } catch (err: any) {
+      console.error("Prediction error:", err);
+      setError(err.message || "An error occurred while processing your request. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -211,6 +214,14 @@ export default function Diabetes() {
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto space-y-8">
+        {!isBackendReady && (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg flex items-center gap-2 animate-fade-in-down">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span>Prediction service is currently offline. Please try again later.</span>
+          </div>
+        )}
         <div className="text-center mb-12 animate-fade-in-down">
           <div className="inline-flex items-center gap-2 px-4 py-2 mb-6 rounded-full bg-white/10 backdrop-blur-xl border border-white/20">
             <span className="relative flex h-2.5 w-2.5">
@@ -408,7 +419,7 @@ export default function Diabetes() {
               <div className="pt-6 animate-fade-in-up delay-400">
                 <button
                   type="submit"
-                  disabled={loading}
+                  disabled={loading || !isBackendReady}
                   className="group relative w-full overflow-hidden bg-white hover:bg-linear-to-r hover:from-indigo-50 hover:to-purple-50 text-indigo-600 py-5 rounded-2xl font-bold text-xl shadow-2xl hover:shadow-[0_20px_60px_-15px_rgba(99,102,241,0.5)]  active:translate-y-0 active:scale-100 transition-all duration-500 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:scale-100 flex justify-center items-center gap-3 cursor-pointer "
                 >
                   {/* Animated gradient background on hover */}
@@ -506,66 +517,76 @@ export default function Diabetes() {
                       Health Recommendations
                     </h3>
                     <div className="space-y-4">
-                      {result.advice.suggestions.suggestions.map((suggestion, index) => (
-                        <div key={index} className="group bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm p-5 rounded-2xl shadow-md border-2 border-gray-100/50 dark:border-gray-700/50 hover:shadow-xl hover:border-indigo-300 dark:hover:border-indigo-600 transition-all duration-300">
-                          <div className="flex justify-between items-start mb-3">
-                            <h4 className="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-2">
-                              {suggestion.title}
-                            </h4>
-                            <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
-                              suggestion.priority === 'High' 
-                                ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' 
-                                : suggestion.priority === 'Medium'
-                                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
-                                : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                            }`}>
-                              {suggestion.priority} Priority
-                            </span>
-                          </div>
+                      {result.advice.suggestions ? (
+                        <>
+                          {result.advice.suggestions.suggestions.map((suggestion, index) => (
+                            <div key={index} className="group bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm p-5 rounded-2xl shadow-md border-2 border-gray-100/50 dark:border-gray-700/50 hover:shadow-xl hover:border-indigo-300 dark:hover:border-indigo-600 transition-all duration-300">
+                              <div className="flex justify-between items-start mb-3">
+                                <h4 className="font-bold text-lg text-gray-900 dark:text-white flex items-center gap-2">
+                                  {suggestion.title}
+                                </h4>
+                                <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                                  suggestion.priority === 'High' 
+                                    ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' 
+                                    : suggestion.priority === 'Medium'
+                                    ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+                                    : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                                }`}>
+                                  {suggestion.priority} Priority
+                                </span>
+                              </div>
+                              
+                              <p className="text-gray-600 dark:text-gray-300 text-sm mb-4 italic">
+                                "{suggestion.rationale}"
+                              </p>
+
+                              <div className="space-y-3">
+                                <div>
+                                  <h5 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Actionable Steps</h5>
+                                  <ul className="space-y-2">
+                                    {suggestion.actionable_steps.map((step, stepIndex) => (
+                                      <li key={stepIndex} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
+                                        <svg className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4" />
+                                        </svg>
+                                        <span>{step}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-gray-100 dark:border-gray-700">
+                                  <div>
+                                    <h5 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Goal</h5>
+                                    <p className="text-sm text-gray-700 dark:text-gray-200">{suggestion.measurable_goal}</p>
+                                  </div>
+                                  <div>
+                                    <h5 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Timeline</h5>
+                                    <p className="text-sm text-gray-700 dark:text-gray-200">{suggestion.estimated_timeframe}</p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          ))}
                           
-                          <p className="text-gray-600 dark:text-gray-300 text-sm mb-4 italic">
-                            "{suggestion.rationale}"
+                          {result.advice.suggestions.note && (
+                            <div className="mt-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/50 rounded-xl">
+                              <div className="flex gap-3">
+                                <svg className="w-6 h-6 text-yellow-600 dark:text-yellow-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                </svg>
+                                <p className="text-sm text-yellow-800 dark:text-yellow-200 font-medium">
+                                  {result.advice.suggestions.note}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="p-6 bg-indigo-50 dark:bg-indigo-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800/30 text-center">
+                          <p className="text-indigo-600 dark:text-indigo-300">
+                            Health recommendations are currently unavailable.
                           </p>
-
-                          <div className="space-y-3">
-                            <div>
-                              <h5 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">Actionable Steps</h5>
-                              <ul className="space-y-2">
-                                {suggestion.actionable_steps.map((step, stepIndex) => (
-                                  <li key={stepIndex} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-200">
-                                    <svg className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4" />
-                                    </svg>
-                                    <span>{step}</span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2 border-t border-gray-100 dark:border-gray-700">
-                              <div>
-                                <h5 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Goal</h5>
-                                <p className="text-sm text-gray-700 dark:text-gray-200">{suggestion.measurable_goal}</p>
-                              </div>
-                              <div>
-                                <h5 className="text-xs font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Timeline</h5>
-                                <p className="text-sm text-gray-700 dark:text-gray-200">{suggestion.estimated_timeframe}</p>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                      
-                      {result.advice.suggestions.note && (
-                        <div className="mt-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-700/50 rounded-xl">
-                          <div className="flex gap-3">
-                            <svg className="w-6 h-6 text-yellow-600 dark:text-yellow-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                            </svg>
-                            <p className="text-sm text-yellow-800 dark:text-yellow-200 font-medium">
-                              {result.advice.suggestions.note}
-                            </p>
-                          </div>
                         </div>
                       )}
                     </div>
