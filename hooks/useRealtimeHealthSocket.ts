@@ -175,6 +175,14 @@ export function useRealtimeHealthSocket({
       }
       case "error": {
         const message = typeof event.message === "string" ? event.message : "Realtime server error";
+
+        // Some realtime backends do not support clear_history and may return this as an error.
+        // Keep connection alive and continue conversation on unsupported-clear-history.
+        if (message.toLowerCase().includes("clear_history")) {
+          onErrorEventRef.current?.("Backend does not support clear_history; continuing without history resets.");
+          return;
+        }
+
         setLastError(message);
         setConnectionState("error");
         onErrorEventRef.current?.(message);

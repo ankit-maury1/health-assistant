@@ -64,10 +64,10 @@ const NOISE_GATE_MIN_OPEN_RMS = 0.012;
 const NOISE_GATE_MIN_CLOSE_RMS = 0.009;
 const USER_SPEECH_HOLD_MS = 250;
 const PRE_SPEECH_FRAME_COUNT = 2;
-const AUDIO_BATCH_TARGET_FRAMES = 2;
-const AUDIO_MAX_QUEUE_FRAMES = 6;
-const AUDIO_MAX_HOLD_MS = 24;
-const AUDIO_HIGH_BUFFERED_BYTES = 128 * 1024;
+const AUDIO_BATCH_TARGET_FRAMES = 4; // larger batch to reduce websocket packet overhead
+const AUDIO_MAX_QUEUE_FRAMES = 8;
+const AUDIO_MAX_HOLD_MS = 40; // increase hold to accumulate more samples before send
+const AUDIO_HIGH_BUFFERED_BYTES = 64 * 1024; // use lower threshold to avoid excess buffering delay
 
 function toSafeNumber(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -393,6 +393,13 @@ export default function RealtimeHealthChat({ wsUrl }: RealtimeHealthChatProps) {
       return;
     }
 
+    // Newer backend(s) may return an explicit clear_history unsupported string.
+    if (message.toLowerCase().includes("clear_history")) {
+      pendingClearHistoryRef.current = false;
+      serverSupportsClearHistoryRef.current = false;
+      return;
+    }
+
     setUiError(message);
   }, []);
 
@@ -691,7 +698,7 @@ export default function RealtimeHealthChat({ wsUrl }: RealtimeHealthChatProps) {
       }
 
       if (!pcmCaptureRef.current) {
-        pcmCaptureRef.current = new PcmCapture(16000, 4096);
+        pcmCaptureRef.current = new PcmCapture(44100, 4096);
       }
 
       noiseFloorRmsRef.current = NOISE_FLOOR_INITIAL_RMS;
@@ -807,7 +814,7 @@ export default function RealtimeHealthChat({ wsUrl }: RealtimeHealthChatProps) {
         }
 
         if (!pcmCaptureRef.current) {
-          pcmCaptureRef.current = new PcmCapture(16000, 4096);
+          pcmCaptureRef.current = new PcmCapture(44100, 4096);
         }
 
         noiseFloorRmsRef.current = NOISE_FLOOR_INITIAL_RMS;

@@ -1,6 +1,6 @@
 export type PcmChunkHandler = (pcm16Chunk: Int16Array) => void;
 
-const DEFAULT_TARGET_SAMPLE_RATE = 16000;
+const DEFAULT_TARGET_SAMPLE_RATE = 44100; // align with backend REALTIME_DEFAULT_SAMPLE_RATE
 const DEFAULT_BUFFER_SIZE = 4096;
 const DEFAULT_CHUNK_DURATION_MS = 20;
 
@@ -46,7 +46,7 @@ function floatToInt16(input: Float32Array): Int16Array {
 }
 
 export class PcmCapture {
-  private readonly targetSampleRate: number;
+  private targetSampleRate: number;
 
   private readonly bufferSize: number;
 
@@ -66,14 +66,14 @@ export class PcmCapture {
 
   private chunkHandler: PcmChunkHandler | null = null;
 
-  private readonly samplesPerChunk: number;
+  private samplesPerChunk: number;
 
   private stopPromise: Promise<void> | null = null;
 
   constructor(targetSampleRate = DEFAULT_TARGET_SAMPLE_RATE, bufferSize = DEFAULT_BUFFER_SIZE) {
     this.targetSampleRate = targetSampleRate;
     this.bufferSize = bufferSize;
-    this.samplesPerChunk = Math.max(1, Math.round((this.targetSampleRate * DEFAULT_CHUNK_DURATION_MS) / 1000));
+    this.samplesPerChunk = Math.max(1, Math.round((Math.max(this.targetSampleRate, 16000) * DEFAULT_CHUNK_DURATION_MS) / 1000));
   }
 
   private flushPendingChunks(force = false): void {
@@ -119,24 +119,39 @@ export class PcmCapture {
       return;
     }
 
+    const audioConstraints: MediaTrackConstraints = {
+      channelCount: 1,
+      sampleSize: 16,
+      echoCancellation: true,
+      noiseSuppression: true,
+    };
+
+    if (this.targetSampleRate > 0) {
+      audioConstraints.sampleRate = this.targetSampleRate;
+    }
+
     this.mediaStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        sampleRate: this.targetSampleRate,
-        sampleSize: 16,
-        echoCancellation: true,
-        noiseSuppression: true,
-      },
+      audio: audioConstraints,
     });
 
     try {
-      this.audioContext = new AudioContext({
-        sampleRate: this.targetSampleRate,
-        latencyHint: "interactive",
-      });
+      if (this.targetSampleRate > 0) {
+        this.audioContext = new AudioContext({
+          sampleRate: this.targetSampleRate,
+          latencyHint: "interactive",
+        });
+      } else {
+        this.audioContext = new AudioContext({ latencyHint: "interactive" });
+      }
     } catch {
       this.audioContext = new AudioContext({ latencyHint: "interactive" });
     }
+
+    if (this.audioContext) {
+      this.targetSampleRate = this.targetSampleRate > 0 ? this.targetSampleRate : this.audioContext.sampleRate;
+      this.samplesPerChunk = Math.max(1, Math.round((this.targetSampleRate * DEFAULT_CHUNK_DURATION_MS) / 1000));
+    }
+
     this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
     this.silentGain = this.audioContext.createGain();
     this.silentGain.gain.value = 0;
@@ -145,11 +160,8 @@ export class PcmCapture {
     this.chunkHandler = onChunk;
 
     const attachChunkHandler = (floatBuffer: Float32Array) => {
-      const downsampled = downsampleBuffer(
-        floatBuffer,
-        this.audioContext?.sampleRate ?? this.targetSampleRate,
-        this.targetSampleRate,
-      );
+      const inputSampleRate = this.audioContext?.sampleRate ?? this.targetSampleRate;
+      const downsampled = downsampleBuffer(floatBuffer, inputSampleRate, this.targetSampleRate);
       this.appendSamples(downsampled);
     };
 
