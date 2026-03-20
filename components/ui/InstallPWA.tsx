@@ -12,11 +12,26 @@ export function InstallPWA() {
   const [promptInstall, setPromptInstall] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
 
+  const showInstallPrompt = async (installEvent: BeforeInstallPromptEvent) => {
+    try {
+      await installEvent.prompt();
+      const { outcome } = await installEvent.userChoice;
+      if (outcome === 'accepted') {
+        setSupportsPWA(false);
+        setIsInstalled(true);
+      }
+    } finally {
+      // Clear deferred prompt so stale events are not reused.
+      setPromptInstall(null);
+    }
+  };
+
   useEffect(() => {
     const handler = (e: Event) => {
       e.preventDefault();
       setSupportsPWA(true);
-      setPromptInstall(e as BeforeInstallPromptEvent);
+      const installEvent = e as BeforeInstallPromptEvent;
+      setPromptInstall(installEvent);
     };
     
     window.addEventListener('beforeinstallprompt', handler);
@@ -34,11 +49,7 @@ export function InstallPWA() {
     if (!promptInstall) {
       return;
     }
-    promptInstall.prompt();
-    const { outcome } = await promptInstall.userChoice;
-    if (outcome === 'accepted') {
-      setSupportsPWA(false);
-    }
+    await showInstallPrompt(promptInstall);
   };
 
   const onDismiss = () => {

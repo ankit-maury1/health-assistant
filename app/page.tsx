@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useState, useEffect } from "react";
+import PredictionForm from "./components/PredictionForm";
 
 
 export default function Home() {
@@ -23,7 +24,7 @@ export default function Home() {
     const checkServer = async () => {
       const controller = new AbortController();
       const startTime = Date.now();
-      const abortTimeoutId = setTimeout(() => controller.abort(), 2000);
+      const abortTimeoutId = setTimeout(() => controller.abort("health-check-timeout"), 2000);
       
       try {
         // Attempt to connect to the Backend via Next.js API proxy
@@ -64,7 +65,10 @@ export default function Home() {
           timeoutId = setTimeout(checkServer, delay);
         }
       } catch (error) {
-        console.error(error);
+        const isAbortError = error instanceof DOMException && error.name === "AbortError";
+        if (!isAbortError) {
+          console.error(error);
+        }
         // If connection fails (e.g. server not running or took > 2 seconds)
         const elapsedTime = Date.now() - startTime;
         
@@ -89,6 +93,8 @@ export default function Home() {
           
           timeoutId = setTimeout(checkServer, delay);
         }
+      } finally {
+        clearTimeout(abortTimeoutId);
       }
     };
 
@@ -220,7 +226,7 @@ export default function Home() {
       </div>
 
       {/* Main content */}
-      <div className="relative z-10 max-w-4xl text-center space-y-10 transition-all duration-1000 opacity-100 translate-y-0">
+      <div className="relative z-10 w-full max-w-4xl text-center space-y-8 md:space-y-10 transition-all duration-1000 opacity-100 translate-y-0">
         {/* Badge */}
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-xl border border-white/20 animate-fade-in-down">
           <span className="relative flex h-3 w-3">
@@ -231,17 +237,17 @@ export default function Home() {
         </div>
 
         {/* Main heading */}
-        <h1 className="text-6xl md:text-8xl font-extrabold tracking-tight drop-shadow-2xl animate-fade-in-down delay-100">
-          <span className="block mb-4 bg-clip-text text-transparent bg-linear-to-r from-white via-purple-100 to-pink-100">
+        <h1 className="text-4xl sm:text-5xl md:text-8xl font-extrabold tracking-tight drop-shadow-2xl animate-fade-in-down delay-100">
+          <span className="block mb-3 md:mb-4 bg-clip-text text-transparent bg-linear-to-r from-white via-purple-100 to-pink-100">
             Health Prediction
           </span>
-          <span className="block text-5xl md:text-7xl bg-clip-text text-transparent bg-linear-to-r from-indigo-200 via-purple-200 to-pink-200 animate-gradient">
+          <span className="block text-3xl sm:text-4xl md:text-7xl bg-clip-text text-transparent bg-linear-to-r from-indigo-200 via-purple-200 to-pink-200 animate-gradient">
             Powered by AI
           </span>
         </h1>
 
         {/* Description */}
-        <p className="text-xl md:text-2xl text-indigo-100/90 max-w-2xl mx-auto leading-relaxed font-medium animate-fade-in-up delay-200 backdrop-blur-sm">
+        <p className="text-base sm:text-lg md:text-2xl text-indigo-100/90 max-w-2xl mx-auto leading-relaxed font-medium animate-fade-in-up delay-200 backdrop-blur-sm px-2">
           Advanced machine learning algorithms to assess your health risks
           <span className="block mt-2 text-purple-200 font-semibold">instantly and securely</span>
         </p>
@@ -253,7 +259,7 @@ export default function Home() {
         <div className="pt-8 animate-fade-in-up delay-400 flex flex-col sm:flex-row gap-6 justify-center items-center">
           <Link 
             href="/diabetes" 
-            className="group relative inline-flex items-center gap-3 bg-white text-indigo-600 px-10 py-5 rounded-2xl font-bold text-xl shadow-2xl hover:shadow-[0_20px_60px_-15px_rgba(255,255,255,0.5)] hover:scale-110 active:scale-105 transition-all duration-500 overflow-hidden"
+            className="group relative inline-flex w-full sm:w-auto items-center justify-center gap-2 sm:gap-3 bg-white text-indigo-600 px-7 sm:px-10 py-4 sm:py-5 rounded-2xl font-bold text-base sm:text-xl shadow-2xl hover:shadow-[0_20px_60px_-15px_rgba(255,255,255,0.5)] hover:scale-[1.03] active:scale-[1.01] transition-all duration-500 overflow-hidden"
           >
             {/* Button glow effect */}
             <div className="absolute inset-0 bg-linear-to-r from-indigo-600 via-purple-600 to-pink-600 opacity-0 group-hover:opacity-10 transition-opacity duration-500 rounded-2xl"></div>
@@ -273,7 +279,7 @@ export default function Home() {
 
           <Link 
             href="/heart-disease" 
-            className="group relative inline-flex items-center gap-3 bg-white text-red-600 px-10 py-5 rounded-2xl font-bold text-xl shadow-2xl hover:shadow-[0_20px_60px_-15px_rgba(239,68,68,0.5)] hover:scale-110 active:scale-105 transition-all duration-500 overflow-hidden"
+            className="group relative inline-flex w-full sm:w-auto items-center justify-center gap-2 sm:gap-3 bg-white text-red-600 px-7 sm:px-10 py-4 sm:py-5 rounded-2xl font-bold text-base sm:text-xl shadow-2xl hover:shadow-[0_20px_60px_-15px_rgba(239,68,68,0.5)] hover:scale-[1.03] active:scale-[1.01] transition-all duration-500 overflow-hidden"
           >
             {/* Button glow effect */}
             <div className="absolute inset-0 bg-linear-to-r from-red-600 via-pink-600 to-rose-600 opacity-0 group-hover:opacity-10 transition-opacity duration-500 rounded-2xl"></div>
@@ -291,7 +297,7 @@ export default function Home() {
             <div className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-1000 bg-linear-to-r from-transparent via-white/30 to-transparent skew-x-12"></div>
           </Link>
         </div>
-    {/* Feature pills */}
+        {/* Feature pills */}
       <div className="flex flex-wrap justify-center gap-3 animate-fade-in-up delay-300">
           {['Fast & Accurate', 'Privacy First', 'Expert Backed'].map((feature, idx) => (
             <div key={idx} className="px-5 py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-sm font-semibold hover:bg-white/20 hover:scale-105 transition-all duration-300 cursor-default">
@@ -299,6 +305,13 @@ export default function Home() {
             </div>
           ))}
         </div>
+
+        {/* Quick prediction form component */}
+        {/* <div className="mt-10 w-full bg-white/90 rounded-xl shadow-xl p-6 backdrop-blur">
+          <h2 className="text-2xl font-bold text-slate-900 mb-4">Quick Prediction (Guest + Logged In)</h2>
+          <PredictionForm />
+        </div> */}
+
         {/* Trust indicators */}
         <div className="flex flex-wrap justify-center items-center gap-8 pt-8 text-indigo-200/70 text-sm animate-fade-in delay-500">
           <div className="flex items-center gap-2">

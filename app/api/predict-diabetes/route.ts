@@ -1,14 +1,30 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
+import authOptions from '@/lib/authOptions';
+import connectToDatabase from '@/lib/mongodb';
+import { encryptHealthData } from '@/lib/encryption';
+import rateLimit from '@/lib/rate-limit';
+
+const predictionLimiter = rateLimit({ interval: 60 * 1000 });
+
+function getClientToken(request: Request) {
+  const forwarded = request.headers.get('x-forwarded-for') || 'unknown';
+  return forwarded.split(',')[0].trim();
+}
 
 function validateDiabetesInput(data: any) {
-  const requiredFields = [
+  const fields = [
     'gender', 'age', 'hypertension', 'heartDisease', 'smokingHistory',
     'bmi', 'hbA1cLevel', 'bloodGlucoseLevel', 'height', 'weight'
   ];
 
-  for (const field of requiredFields) {
-    if (data[field] === undefined || data[field] === null || isNaN(Number(data[field]))) {
-      return `Invalid or missing field: ${field}`;
+  for (const field of fields) {
+    // All fields are optional. If provided, they must be numeric.
+    if (data[field] === undefined || data[field] === null || data[field] === "") {
+      continue;
+    }
+    if (isNaN(Number(data[field]))) {
+      return `Invalid field: ${field}`;
     }
   }
   return null;
@@ -16,6 +32,15 @@ function validateDiabetesInput(data: any) {
 
 export async function POST(request: Request) {
   try {
+    try {
+      await predictionLimiter.check(30, getClientToken(request));
+    } catch {
+      return NextResponse.json(
+        { error: 'Too many requests. Please try again shortly.' },
+        { status: 429 }
+      );
+    }
+
     const body = await request.json();
 
     // Input Validation
@@ -55,6 +80,36 @@ export async function POST(request: Request) {
       }
 
       const data = await response.json();
+
+      try {
+        const session = (await getServerSession(authOptions as any)) as any;
+        if (session?.user?.email) {
+          const db = await connectToDatabase();
+          const users = db.collection('users');
+          const predictionHistory = db.collection('predictionhistories');
+          const user = await users.findOne({ email: session.user.email });
+          if (user) {
+            let riskScore: number = typeof data.riskScore === 'number' ? data.riskScore : Number(data.riskScore ?? data.probability ?? 0);
+            if (Number.isNaN(riskScore)) riskScore = 0;
+            const riskLevel: string = data.riskLevel ?? (riskScore >= 70 ? 'high' : riskScore >= 40 ? 'moderate' : 'low');
+
+            await predictionHistory.insertOne({
+              userId: user._id,
+              date: new Date(),
+              encryptedInputMetrics: encryptHealthData(body),
+              riskScore,
+              riskLevel,
+              condition: 'diabetes',
+              encryptedResult: encryptHealthData(data),
+              createdAt: new Date(),
+              updatedAt: new Date(),
+            });
+          }
+        }
+      } catch (historyErr) {
+        console.error('Unable to save diabetes history:', historyErr);
+      }
+
       return NextResponse.json(data);
 
     } catch (error: any) {

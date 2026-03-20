@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { InstallPWA } from "../components/ui/InstallPWA";
+import Navbar from "./components/layout/Navbar";
+import Providers from "./providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -58,9 +60,11 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         suppressHydrationWarning
       >
-        {/* <ThemeToggle /> */}
-        {children}
-        <InstallPWA />
+        <Providers>
+          <Navbar />
+          <main className="pt-24 md:pt-20">{children}</main>
+          <InstallPWA />
+        </Providers>
       </body>
     </html>
   );

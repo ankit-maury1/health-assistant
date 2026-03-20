@@ -1,9 +1,29 @@
 "use client";
 
 import { useState, useEffect, FormEvent } from "react";
+import { useSession } from "next-auth/react";
 import { Card } from "@/components/ui/Card";
 import { FieldInfoCard } from "@/components/ui/FieldInfoCard";
 import CustomSelect from "@/components/ui/CustomSelect";
+
+interface ProfileHealthData {
+  age?: unknown;
+  sex?: unknown;
+  chest_pain_type?: unknown;
+  resting_bp?: unknown;
+  cholesterol?: unknown;
+  fasting_blood_sugar?: unknown;
+  resting_ecg?: unknown;
+  max_heart_rate?: unknown;
+  exercise_angina?: unknown;
+  oldpeak?: unknown;
+  st_slope?: unknown;
+  gender?: unknown;
+}
+
+interface UserProfileResponse {
+  healthData?: ProfileHealthData | null;
+}
 
 interface Suggestion {
   title: string;
@@ -30,7 +50,15 @@ interface PredictionResult {
   };
 }
 
+const toFormString = (value: unknown): string => {
+  if (value === undefined || value === null || value === "") {
+    return "";
+  }
+  return String(value);
+};
+
 export default function HeartDisease() {
+  const { status } = useSession();
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isDarkTheme, setIsDarkTheme] = useState(false);
   const [formData, setFormData] = useState({
@@ -96,6 +124,51 @@ export default function HeartDisease() {
     }
   };
 
+  // Prefill from baseline profile so the patient does not repeat basic details.
+  useEffect(() => {
+    if (status !== "authenticated") return;
+
+    const loadProfileDefaults = async () => {
+      try {
+        const res = await fetch("/api/user/profile");
+        if (!res.ok) return;
+
+        const data = (await res.json()) as UserProfileResponse;
+        const profile = data.healthData;
+        if (!profile || typeof profile !== "object") return;
+
+        const profileSex = toFormString(profile.sex ?? profile.gender);
+
+        setFormData((prev) => ({
+          ...prev,
+          age: prev.age || toFormString(profile.age),
+          sex: prev.sex || profileSex,
+          chest_pain_type: prev.chest_pain_type || toFormString(profile.chest_pain_type),
+          resting_bp: prev.resting_bp || toFormString(profile.resting_bp),
+          cholesterol: prev.cholesterol || toFormString(profile.cholesterol),
+          fasting_blood_sugar: prev.fasting_blood_sugar || toFormString(profile.fasting_blood_sugar),
+          resting_ecg: prev.resting_ecg || toFormString(profile.resting_ecg),
+          max_heart_rate: prev.max_heart_rate || toFormString(profile.max_heart_rate),
+          exercise_angina: prev.exercise_angina || toFormString(profile.exercise_angina),
+          oldpeak: prev.oldpeak || toFormString(profile.oldpeak),
+          st_slope: prev.st_slope || toFormString(profile.st_slope),
+        }));
+      } catch (profileErr) {
+        console.error("Unable to load baseline profile for heart disease form", profileErr);
+      }
+    };
+
+    loadProfileDefaults();
+  }, [status]);
+
+  const parseOptionalNumber = (value: string | number | null | undefined): number | null => {
+    if (value === undefined || value === null || value === "") {
+      return null;
+    }
+    const num = Number(value);
+    return Number.isNaN(num) ? null : num;
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -103,17 +176,17 @@ export default function HeartDisease() {
     
     try {
       const payload = {
-        age: parseInt(formData.age),
-        sex: parseInt(formData.sex),
-        chest_pain_type: parseInt(formData.chest_pain_type),
-        resting_bp: parseInt(formData.resting_bp),
-        cholesterol: parseInt(formData.cholesterol),
-        fasting_blood_sugar: parseInt(formData.fasting_blood_sugar),
-        resting_ecg: parseInt(formData.resting_ecg),
-        max_heart_rate: parseInt(formData.max_heart_rate),
-        exercise_angina: parseInt(formData.exercise_angina),
-        oldpeak: parseFloat(formData.oldpeak),
-        st_slope: parseInt(formData.st_slope),
+        age: parseOptionalNumber(formData.age),
+        sex: parseOptionalNumber(formData.sex),
+        chest_pain_type: parseOptionalNumber(formData.chest_pain_type),
+        resting_bp: parseOptionalNumber(formData.resting_bp),
+        cholesterol: parseOptionalNumber(formData.cholesterol),
+        fasting_blood_sugar: parseOptionalNumber(formData.fasting_blood_sugar),
+        resting_ecg: parseOptionalNumber(formData.resting_ecg),
+        max_heart_rate: parseOptionalNumber(formData.max_heart_rate),
+        exercise_angina: parseOptionalNumber(formData.exercise_angina),
+        oldpeak: parseOptionalNumber(formData.oldpeak),
+        st_slope: parseOptionalNumber(formData.st_slope),
       };
 
       const response = await fetch("/api/heart-disease", {
@@ -129,6 +202,31 @@ export default function HeartDisease() {
 
       const data = await response.json();
       setResult(data);
+
+      const riskScore =
+        typeof data.riskScore === 'number'
+          ? data.riskScore
+          : Number(data.riskScore ?? data.probability ?? data.advice?.score ?? 0);
+      const riskLevel =
+        data.riskLevel || data.advice?.risk_level || (riskScore >= 70 ? 'high' : riskScore >= 40 ? 'moderate' : 'low');
+
+      if (status === 'authenticated') {
+        try {
+          await fetch('/api/predictions/history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              inputMetrics: payload,
+              riskScore,
+              riskLevel,
+              condition: 'heart-disease',
+              date: new Date().toISOString(),
+            }),
+          });
+        } catch (writeErr) {
+          console.error('Unable to save heart disease prediction history', writeErr);
+        }
+      }
     } catch (err: any) {
       console.error("Prediction error:", err);
       setError(err.message || "An error occurred while processing your request. Please try again.");
@@ -226,10 +324,10 @@ export default function HeartDisease() {
             </span>
             <span className="text-sm font-semibold text-white/90">AI Health Assessment</span>
           </div>
-          <h1 className="text-5xl md:text-6xl font-extrabold text-white mb-4 tracking-tight drop-shadow-2xl">
+          <h1 className="text-3xl sm:text-4xl md:text-6xl font-extrabold text-white mb-4 tracking-tight drop-shadow-2xl">
             Heart Disease Risk <span className="text-transparent bg-clip-text bg-linear-to-r from-red-200 via-pink-200 to-rose-200 animate-gradient">Prediction</span>
           </h1>
-          <p className="text-indigo-100 text-lg md:text-xl max-w-2xl mx-auto font-medium leading-relaxed">Advanced AI-powered cardiovascular health analysis for early detection.</p>
+          <p className="text-indigo-100 text-base sm:text-lg md:text-xl max-w-2xl mx-auto font-medium leading-relaxed">Advanced AI-powered cardiovascular health analysis for early detection.</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -237,14 +335,13 @@ export default function HeartDisease() {
           <div className="lg:col-span-2 space-y-8">
             <form onSubmit={handleSubmit} className="space-y-8">
               
-              <Card title="Personal Information" description="Basic demographic and physical details" className="animate-fade-in-up delay-100 z-40">
+              <Card title="Personal Information" description="Saved values are filled automatically. Empty fields are left for you to enter." className="animate-fade-in-up delay-100 z-40">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="group">
                     <label className="block text-sm font-semibold text-gray-600 dark:text-gray-300 mb-2 transition-colors group-focus-within:text-indigo-600 dark:group-focus-within:text-indigo-400">Age</label>
                     <input
                       type="number"
                       name="age"
-                      required
                       min="0"
                       max="120"
                       value={formData.age}
@@ -260,8 +357,7 @@ export default function HeartDisease() {
                     name="sex"
                     value={formData.sex}
                     onChange={handleChange}
-                    placeholder="Select Gender"
-                    required
+                    placeholder="Select gender"
                     icon={
                       <svg className="w-4 h-4 text-indigo-500 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -283,7 +379,6 @@ export default function HeartDisease() {
                     value={formData.chest_pain_type}
                     onChange={handleChange}
                     placeholder="Select Type"
-                    required
                     icon={
                       <svg className="w-4 h-4 text-indigo-500 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
@@ -303,7 +398,6 @@ export default function HeartDisease() {
                     value={formData.exercise_angina}
                     onChange={handleChange}
                     placeholder="Select Status"
-                    required
                     icon={
                       <svg className="w-4 h-4 text-indigo-500 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
@@ -324,7 +418,6 @@ export default function HeartDisease() {
                     <input
                       type="number"
                       name="resting_bp"
-                      required
                       min="80"
                       max="200"
                       value={formData.resting_bp}
@@ -340,7 +433,6 @@ export default function HeartDisease() {
                     <input
                       type="number"
                       name="cholesterol"
-                      required
                       min="50"
                       max="600"
                       value={formData.cholesterol}
@@ -357,7 +449,6 @@ export default function HeartDisease() {
                     value={formData.fasting_blood_sugar}
                     onChange={handleChange}
                     placeholder="Select Status"
-                    required
                     icon={
                       <svg className="w-4 h-4 text-indigo-500 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -384,7 +475,6 @@ export default function HeartDisease() {
                     <input
                       type="number"
                       name="max_heart_rate"
-                      required
                       min="60"
                       max="220"
                       value={formData.max_heart_rate}
@@ -405,7 +495,6 @@ export default function HeartDisease() {
                     value={formData.resting_ecg}
                     onChange={handleChange}
                     placeholder="Select ECG Result"
-                    required
                     icon={
                       <svg className="w-4 h-4 text-indigo-500 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
@@ -424,7 +513,6 @@ export default function HeartDisease() {
                       type="number"
                       name="oldpeak"
                       step="0.1"
-                      required
                       min="0"
                       max="10"
                       value={formData.oldpeak}
@@ -441,7 +529,6 @@ export default function HeartDisease() {
                     value={formData.st_slope}
                     onChange={handleChange}
                     placeholder="Select Slope Type"
-                    required
                     icon={
                       <svg className="w-4 h-4 text-indigo-500 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
@@ -646,7 +733,7 @@ export default function HeartDisease() {
 
           {/* Info Sidebar */}
           <div className="space-y-6 animate-fade-in-right delay-600">
-            <div className="sticky top-8 space-y-6">
+            <div className="space-y-6 lg:sticky lg:top-8">
               <h3 className="text-2xl font-extrabold text-white mb-6 pl-2 flex items-center gap-3 drop-shadow-lg">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 backdrop-blur-md border border-white/30 shadow-lg">
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">

@@ -1,9 +1,27 @@
 "use client";
 
 import { useState, useEffect, FormEvent } from "react";
+import { useSession } from "next-auth/react";
 import { Card } from "@/components/ui/Card";
 import { FieldInfoCard } from "@/components/ui/FieldInfoCard";
 import CustomSelect from "@/components/ui/CustomSelect";
+
+interface ProfileHealthData {
+  gender?: unknown;
+  age?: unknown;
+  height?: unknown;
+  weight?: unknown;
+  hypertension?: unknown;
+  heartDisease?: unknown;
+  smokingHistory?: unknown;
+  bmi?: unknown;
+  hbA1cLevel?: unknown;
+  bloodGlucoseLevel?: unknown;
+}
+
+interface UserProfileResponse {
+  healthData?: ProfileHealthData | null;
+}
 
 interface Suggestion {
   title: string;
@@ -29,7 +47,15 @@ interface PredictionResult {
   };
 }
 
+const toFormString = (value: unknown): string => {
+  if (value === undefined || value === null || value === "") {
+    return "";
+  }
+  return String(value);
+};
+
 export default function Diabetes() {
+  const { status } = useSession();
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
   const [isDarkTheme, setIsDarkTheme] = useState(false);
   const [formData, setFormData] = useState({
@@ -37,9 +63,9 @@ export default function Diabetes() {
     age: "",
     height: "",
     weight: "",
-    hypertension: false,
-    heartDisease: false,
-    smokingHistory: "-1",
+    hypertension: "",
+    heartDisease: "",
+    smokingHistory: "",
     bmi: "",
     hbA1cLevel: "",
     bloodGlucoseLevel: "",
@@ -95,6 +121,48 @@ export default function Diabetes() {
     }
   }, [formData.height, formData.weight]);
 
+  // Prefill from saved baseline profile so users do not re-enter common details.
+  useEffect(() => {
+    if (status !== "authenticated") return;
+
+    const loadProfileDefaults = async () => {
+      try {
+        const res = await fetch("/api/user/profile");
+        if (!res.ok) return;
+
+        const data = (await res.json()) as UserProfileResponse;
+        const profile = data.healthData;
+        if (!profile || typeof profile !== "object") return;
+
+        setFormData((prev) => ({
+          ...prev,
+          gender: prev.gender || toFormString(profile.gender),
+          age: prev.age || toFormString(profile.age),
+          height: prev.height || toFormString(profile.height),
+          weight: prev.weight || toFormString(profile.weight),
+          hypertension: prev.hypertension || toFormString(profile.hypertension),
+          heartDisease: prev.heartDisease || toFormString(profile.heartDisease),
+          smokingHistory: prev.smokingHistory || toFormString(profile.smokingHistory),
+          hbA1cLevel: prev.hbA1cLevel || toFormString(profile.hbA1cLevel),
+          bloodGlucoseLevel: prev.bloodGlucoseLevel || toFormString(profile.bloodGlucoseLevel),
+          bmi: prev.bmi || toFormString(profile.bmi),
+        }));
+      } catch (profileErr) {
+        console.error("Unable to load baseline profile for diabetes form", profileErr);
+      }
+    };
+
+    loadProfileDefaults();
+  }, [status]);
+
+  const parseOptionalNumber = (value: string | number | boolean | null | undefined): number | null => {
+    if (value === undefined || value === null || value === "" || value === false) {
+      return null;
+    }
+    const num = Number(value);
+    return Number.isNaN(num) ? null : num;
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -102,16 +170,16 @@ export default function Diabetes() {
     
     try {
       const payload = {
-        gender: parseInt(formData.gender),
-        age: parseFloat(formData.age),
-        hypertension: formData.hypertension ? 1 : 0,
-        heartDisease: formData.heartDisease ? 1 : 0,
-        smokingHistory: parseInt(formData.smokingHistory),
-        bmi: parseFloat(formData.bmi),
-        hbA1cLevel: parseFloat(formData.hbA1cLevel),
-        bloodGlucoseLevel: parseFloat(formData.bloodGlucoseLevel),
-        height: parseFloat(formData.height),
-        weight: parseFloat(formData.weight),
+        gender: parseOptionalNumber(formData.gender),
+        age: parseOptionalNumber(formData.age),
+        hypertension: parseOptionalNumber(formData.hypertension),
+        heartDisease: parseOptionalNumber(formData.heartDisease),
+        smokingHistory: parseOptionalNumber(formData.smokingHistory),
+        bmi: parseOptionalNumber(formData.bmi),
+        hbA1cLevel: parseOptionalNumber(formData.hbA1cLevel),
+        bloodGlucoseLevel: parseOptionalNumber(formData.bloodGlucoseLevel),
+        height: parseOptionalNumber(formData.height),
+        weight: parseOptionalNumber(formData.weight),
       };
 
       const response = await fetch("/api/predict-diabetes", {
@@ -127,6 +195,31 @@ export default function Diabetes() {
 
       const data = await response.json();
       setResult(data);
+
+      const riskScore =
+        typeof data.riskScore === 'number'
+          ? data.riskScore
+          : Number(data.riskScore ?? data.probability ?? data.advice?.score ?? 0);
+      const riskLevel =
+        data.riskLevel || data.advice?.risk_level || (riskScore >= 70 ? 'high' : riskScore >= 40 ? 'moderate' : 'low');
+
+      if (status === 'authenticated') {
+        try {
+          await fetch('/api/predictions/history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              inputMetrics: payload,
+              riskScore,
+              riskLevel,
+              condition: 'diabetes',
+              date: new Date().toISOString(),
+            }),
+          });
+        } catch (writeErr) {
+          console.error('Unable to save diabetes prediction history', writeErr);
+        }
+      }
     } catch (err: any) {
       console.error("Prediction error:", err);
       setError(err.message || "An error occurred while processing your request. Please try again.");
@@ -230,10 +323,10 @@ export default function Diabetes() {
             </span>
             <span className="text-sm font-semibold text-white/90">AI Health Assessment</span>
           </div>
-          <h1 className="text-5xl md:text-6xl font-extrabold text-white mb-4 tracking-tight drop-shadow-2xl">
+          <h1 className="text-3xl sm:text-4xl md:text-6xl font-extrabold text-white mb-4 tracking-tight drop-shadow-2xl">
             Diabetes Risk <span className="text-transparent bg-clip-text bg-linear-to-r from-indigo-200 via-purple-200 to-pink-200 animate-gradient">Prediction</span>
           </h1>
-          <p className="text-indigo-100 text-lg md:text-xl max-w-2xl mx-auto font-medium leading-relaxed">Advanced AI-powered health analysis for a better tomorrow.</p>
+          <p className="text-indigo-100 text-base sm:text-lg md:text-xl max-w-2xl mx-auto font-medium leading-relaxed">Advanced AI-powered health analysis for a better tomorrow.</p>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -241,14 +334,14 @@ export default function Diabetes() {
           <div className="lg:col-span-2 space-y-8">
             <form onSubmit={handleSubmit} className="space-y-8">
               
-              <Card title="Personal Details" description="Basic information about yourself" className="animate-fade-in-up delay-100 z-30">
+              <Card title="Personal Details" description="Saved values are filled automatically. Empty fields are left for you to enter." className="animate-fade-in-up delay-100 z-30">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <CustomSelect
                     label="Gender"
                     name="gender"
                     value={formData.gender}
                     onChange={handleChange}
-                    placeholder="Select Gender"
+                    placeholder="Select gender"
                     icon={
                       <svg className="w-4 h-4 text-indigo-500 dark:text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -265,7 +358,6 @@ export default function Diabetes() {
                     <input
                       type="number"
                       name="age"
-                      required
                       min="0"
                       value={formData.age}
                       onChange={handleChange}
@@ -280,7 +372,6 @@ export default function Diabetes() {
                     <input
                       type="number"
                       name="height"
-                      required
                       min="90"
                       value={formData.height}
                       onChange={handleChange}
@@ -294,7 +385,6 @@ export default function Diabetes() {
                     <input
                       type="number"
                       name="weight"
-                      required
                       min="0"
                       value={formData.weight}
                       onChange={handleChange}
@@ -327,40 +417,30 @@ export default function Diabetes() {
                     ]}
                   />
 
-                  <div className="flex flex-wrap gap-6 pt-2">
-                    <label className="flex items-center space-x-3 cursor-pointer group bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm px-6 py-4 rounded-xl border-2 border-transparent hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-all duration-300 shadow-lg">
-                      <div className="relative flex items-center">
-                        <input
-                          type="checkbox"
-                          name="hypertension"
-                          checked={formData.hypertension}
-                          onChange={handleChange}
-                          className="peer sr-only"
-                        />
-                        <div className="w-6 h-6 border-2 border-gray-300 dark:border-gray-600 rounded-md peer-checked:bg-indigo-500 peer-checked:border-indigo-500 transition-all duration-200"></div>
-                        <svg className="absolute w-4 h-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                      <span className="text-gray-700 dark:text-gray-200 font-medium group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Hypertension</span>
-                    </label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-2">
+                    <CustomSelect
+                      label="High blood pressure"
+                      name="hypertension"
+                      value={formData.hypertension}
+                      onChange={handleChange}
+                      placeholder="Select"
+                      options={[
+                        { label: "No", value: "0" },
+                        { label: "Yes", value: "1" }
+                      ]}
+                    />
 
-                    <label className="flex items-center space-x-3 cursor-pointer group bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm px-6 py-4 rounded-xl border-2 border-transparent hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-all duration-300 shadow-lg hover:scale-105">
-                      <div className="relative flex items-center">
-                        <input
-                          type="checkbox"
-                          name="heartDisease"
-                          checked={formData.heartDisease}
-                          onChange={handleChange}
-                          className="peer sr-only"
-                        />
-                        <div className="w-6 h-6 border-2 border-gray-300 dark:border-gray-600 rounded-md peer-checked:bg-indigo-500 peer-checked:border-indigo-500 transition-all duration-200"></div>
-                        <svg className="absolute w-4 h-4 text-white top-1 left-1 opacity-0 peer-checked:opacity-100 transition-opacity duration-200" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
-                        </svg>
-                      </div>
-                      <span className="text-gray-700 dark:text-gray-200 font-medium group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">Heart Disease</span>
-                    </label>
+                    <CustomSelect
+                      label="Heart disease"
+                      name="heartDisease"
+                      value={formData.heartDisease}
+                      onChange={handleChange}
+                      placeholder="Select"
+                      options={[
+                        { label: "No", value: "0" },
+                        { label: "Yes", value: "1" }
+                      ]}
+                    />
                   </div>
                 </div>
               </Card>
@@ -389,7 +469,6 @@ export default function Diabetes() {
                       step="0.1"
                       min="3"
                       max="15"
-                      required
                       value={formData.hbA1cLevel}
                       onChange={handleChange}
                       className="w-full px-5 py-3.5 rounded-xl border-2 border-gray-300/50 dark:border-gray-600/50 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:bg-white dark:focus:bg-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 hover:border-indigo-400 dark:hover:border-indigo-600 transition-all duration-300 outline-none shadow-lg font-medium"
@@ -405,7 +484,6 @@ export default function Diabetes() {
                       step="1"
                       min="50"
                       max="500"
-                      required
                       value={formData.bloodGlucoseLevel}
                       onChange={handleChange}
                       className="w-full px-5 py-3.5 rounded-xl border-2 border-gray-300/50 dark:border-gray-600/50 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm text-gray-900 dark:text-white placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:bg-white dark:focus:bg-gray-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 hover:border-indigo-400 dark:hover:border-indigo-600 transition-all duration-300 outline-none shadow-lg font-medium"
@@ -607,7 +685,7 @@ export default function Diabetes() {
 
           {/* Info Sidebar */}
           <div className="space-y-6 animate-fade-in-right delay-500">
-            <div className="sticky top-8 space-y-6">
+            <div className="space-y-6 lg:sticky lg:top-8">
               <h3 className="text-2xl font-extrabold text-white mb-6 pl-2 flex items-center gap-3 drop-shadow-lg">
                 <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 backdrop-blur-md border border-white/30 shadow-lg">
                   <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
