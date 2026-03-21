@@ -2,6 +2,14 @@ import { NextResponse } from 'next/server';
 
 export async function GET(request: Request) {
   try {
+    const healthKey = process.env.HEALTH_API_KEY;
+    if (healthKey) {
+      const incomingKey = request.headers.get('x-api-key');
+      if (!incomingKey || incomingKey !== healthKey) {
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+      }
+    }
+
     const backendUrl = process.env.BACKEND_API_URL;
     if (!backendUrl) {
         console.error('BACKEND_API_URL is not defined');

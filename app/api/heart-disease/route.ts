@@ -1,27 +1,39 @@
-import { NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
-import authOptions from '@/lib/authOptions';
-import connectToDatabase from '@/lib/mongodb';
-import { encryptHealthData } from '@/lib/encryption';
-import rateLimit from '@/lib/rate-limit';
+import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth/next";
+import authOptions from "@/lib/authOptions";
+import connectToDatabase from "@/lib/mongodb";
+import { encryptHealthData } from "@/lib/encryption";
+import rateLimit from "@/lib/rate-limit";
 
 const predictionLimiter = rateLimit({ interval: 60 * 1000 });
 
 function getClientToken(request: Request) {
-  const forwarded = request.headers.get('x-forwarded-for') || 'unknown';
-  return forwarded.split(',')[0].trim();
+  const forwarded = request.headers.get("x-forwarded-for") || "unknown";
+  return forwarded.split(",")[0].trim();
 }
 
 function validateHeartDiseaseInput(data: any) {
   const fields = [
-    'age', 'sex', 'chest_pain_type', 'resting_bp', 'cholesterol',
-    'fasting_blood_sugar', 'resting_ecg', 'max_heart_rate',
-    'exercise_angina', 'oldpeak', 'st_slope'
+    "age",
+    "sex",
+    "chest_pain_type",
+    "resting_bp",
+    "cholesterol",
+    "fasting_blood_sugar",
+    "resting_ecg",
+    "max_heart_rate",
+    "exercise_angina",
+    "oldpeak",
+    "st_slope",
   ];
 
   for (const field of fields) {
     // All fields are optional. If provided, they must be numeric.
-    if (data[field] === undefined || data[field] === null || data[field] === "") {
+    if (
+      data[field] === undefined ||
+      data[field] === null ||
+      data[field] === ""
+    ) {
       continue;
     }
     if (isNaN(Number(data[field]))) {
@@ -31,52 +43,68 @@ function validateHeartDiseaseInput(data: any) {
   return null;
 }
 
+function normalizeRiskScore(data: any) {
+  const candidate =
+    data?.riskScore ?? data?.probability ?? data?.advice?.score ?? null;
+  const numeric = Number(candidate);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function normalizeRiskLevel(data: any, riskScore: number) {
+  return (
+    data?.riskLevel ??
+    data?.advice?.risk_level ??
+    data?.advice?.riskLevel ??
+    (riskScore >= 70
+      ? "High Risk"
+      : riskScore >= 40
+        ? "Moderate Risk"
+        : "Low Risk")
+  );
+}
+
 export async function POST(request: Request) {
   try {
     try {
       await predictionLimiter.check(30, getClientToken(request));
     } catch {
       return NextResponse.json(
-        { error: 'Too many requests. Please try again shortly.' },
-        { status: 429 }
+        { error: "Too many requests. Please try again shortly." },
+        { status: 429 },
       );
     }
-
     const body = await request.json();
 
     // Input Validation
     const validationError = validateHeartDiseaseInput(body);
     if (validationError) {
-      return NextResponse.json(
-        { error: validationError },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
     // Proxy the request to the Python backend
     const backendUrl = process.env.BACKEND_API_URL;
     if (!backendUrl) {
-        return NextResponse.json(
-            { error: 'Server configuration error' },
-            { status: 500 }
-        );
+      return NextResponse.json(
+        { error: "Server configuration error" },
+        { status: 500 },
+      );
     }
 
     try {
       const response = await fetch(`${backendUrl}/api/predict-heart-disease`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
+          "Content-Type": "application/json",
         },
         body: JSON.stringify(body),
       });
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('Backend API error:', response.status, errorText);
+        console.error("Backend API error:", response.status, errorText);
         return NextResponse.json(
           { error: `Backend API error: ${response.status}` },
-          { status: response.status }
+          { status: response.status },
         );
       }
 
@@ -86,13 +114,12 @@ export async function POST(request: Request) {
         const session = (await getServerSession(authOptions as any)) as any;
         if (session?.user?.email) {
           const db = await connectToDatabase();
-          const users = db.collection('users');
-          const predictionHistory = db.collection('predictionhistories');
+          const users = db.collection("users");
+          const predictionHistory = db.collection("predictionhistories");
           const user = await users.findOne({ email: session.user.email });
           if (user) {
-            let riskScore: number = typeof data.riskScore === 'number' ? data.riskScore : Number(data.riskScore ?? data.probability ?? 0);
-            if (Number.isNaN(riskScore)) riskScore = 0;
-            const riskLevel: string = data.riskLevel ?? (riskScore >= 70 ? 'high' : riskScore >= 40 ? 'moderate' : 'low');
+            const riskScore: number = normalizeRiskScore(data);
+            const riskLevel: string = normalizeRiskLevel(data, riskScore);
 
             await predictionHistory.insertOne({
               userId: user._id,
@@ -100,7 +127,7 @@ export async function POST(request: Request) {
               encryptedInputMetrics: encryptHealthData(body),
               riskScore,
               riskLevel,
-              condition: 'heart-disease',
+              condition: "heart-disease",
               encryptedResult: encryptHealthData(data),
               createdAt: new Date(),
               updatedAt: new Date(),
@@ -108,22 +135,21 @@ export async function POST(request: Request) {
           }
         }
       } catch (historyErr) {
-        console.error('Unable to save heart-disease history:', historyErr);
+        console.error("Unable to save heart-disease history:", historyErr);
       }
 
       return NextResponse.json(data);
-
     } catch (error: any) {
-      console.error('Error proxying to backend:', error);
+      console.error("Error proxying to backend:", error);
       return NextResponse.json(
-        { error: 'Failed to connect to prediction service' },
-        { status: 500 }
+        { error: "Failed to connect to prediction service" },
+        { status: 500 },
       );
     }
   } catch (error) {
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      { error: "Internal server error" },
+      { status: 500 },
     );
   }
 }

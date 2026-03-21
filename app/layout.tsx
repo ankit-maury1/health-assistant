@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import Script from "next/script";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { InstallPWA } from "../components/ui/InstallPWA";
@@ -37,24 +38,20 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              (function() {
-                try {
-                  const stored = localStorage.getItem('health-prediction-theme');
-                  const theme = stored || 'light';
-                  if (theme === 'dark') {
-                    document.documentElement.classList.add('dark');
-                  } else {
-                    document.documentElement.classList.remove('dark');
-                  }
-                  document.documentElement.setAttribute('data-theme', theme);
-                } catch (e) {}
-              })();
-            `,
-          }}
-        />
+        <Script id="theme-script" strategy="beforeInteractive">
+          {`(function() {
+              try {
+                const stored = localStorage.getItem('health-prediction-theme');
+                const theme = stored || 'light';
+                if (theme === 'dark') {
+                  document.documentElement.classList.add('dark');
+                } else {
+                  document.documentElement.classList.remove('dark');
+                }
+                document.documentElement.setAttribute('data-theme', theme);
+              } catch (e) {}
+            })();`}
+        </Script>
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
@@ -62,7 +59,7 @@ export default function RootLayout({
       >
         <Providers>
           <Navbar />
-          <main className="pt-24 md:pt-20">{children}</main>
+          <main>{children}</main>
           <InstallPWA />
         </Providers>
       </body>

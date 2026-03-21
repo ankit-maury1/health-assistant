@@ -203,23 +203,26 @@ export default function Diabetes() {
       const riskLevel =
         data.riskLevel || data.advice?.risk_level || (riskScore >= 70 ? 'high' : riskScore >= 40 ? 'moderate' : 'low');
 
-      if (status === 'authenticated') {
-        try {
-          await fetch('/api/predictions/history', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              inputMetrics: payload,
-              riskScore,
-              riskLevel,
-              condition: 'diabetes',
-              date: new Date().toISOString(),
-            }),
-          });
-        } catch (writeErr) {
-          console.error('Unable to save diabetes prediction history', writeErr);
-        }
-      }
+      // History already is saved by /api/predict-diabetes on the server side,
+      // so avoid duplicate records by not writing from the client again.
+      //
+      // if (status === 'authenticated') {
+      //   try {
+      //     await fetch('/api/predictions/history', {
+      //       method: 'POST',
+      //       headers: { 'Content-Type': 'application/json' },
+      //       body: JSON.stringify({
+      //         inputMetrics: payload,
+      //         riskScore,
+      //         riskLevel,
+      //         condition: 'diabetes',
+      //         date: new Date().toISOString(),
+      //       }),
+      //     });
+      //   } catch (writeErr) {
+      //     console.error('Unable to save diabetes prediction history', writeErr);
+      //   }
+      // }
     } catch (err: any) {
       console.error("Prediction error:", err);
       setError(err.message || "An error occurred while processing your request. Please try again.");

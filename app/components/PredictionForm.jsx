@@ -30,7 +30,11 @@ export default function PredictionForm() {
     async function loadProfile() {
       try {
         const res = await fetch("/api/user/profile");
+
         if (!res.ok) {
+          if (res.status === 401 || res.status === 404) {
+            return;
+          }
           throw new Error("Failed to load profile");
         }
 

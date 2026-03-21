@@ -167,7 +167,24 @@ export default function DashboardSettings() {
   };
 
   if (status !== "authenticated") {
-    return <p className="p-4">Login to update your baseline metrics.</p>;
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-linear-to-br from-indigo-500 via-purple-500 to-pink-500 dark:from-indigo-950 dark:via-purple-950 dark:to-pink-950 py-10 px-4 sm:px-6 lg:px-8">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute top-0 left-0 w-72 h-72 bg-purple-400/20 rounded-full blur-3xl animate-float" />
+          <div className="absolute bottom-10 right-4 w-80 h-80 bg-pink-400/20 rounded-full blur-3xl animate-float delay-200" />
+        </div>
+
+        <div className="relative z-10 max-w-md mx-auto py-20">
+          <Card title="Sign In Required" description="Please sign in to manage your baseline health data.">
+            <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">Your settings are stored securely in your account. Sign in to continue.</p>
+            <div className="flex flex-col gap-3">
+              <a href="/auth/signin" className="w-full text-center py-2 rounded-xl bg-indigo-600 text-white hover:bg-indigo-700">Sign in</a>
+              <a href="/auth/signup" className="w-full text-center py-2 rounded-xl bg-white text-indigo-600 hover:bg-indigo-100">Create account</a>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -27,9 +27,19 @@ export async function GET(req) {
 
   const db = await connectToDatabase();
   const users = db.collection("users");
-  const user = await users.findOne({ email: session.user.email });
+  let user = await users.findOne({ email: session.user.email });
+
   if (!user) {
-    return new Response(JSON.stringify({ error: "User not found" }), { status: 404 });
+    // If the user exists in next-auth session but not in our DB yet,
+    // seed the user without health data and continue to avoid 404s.
+    const now = new Date();
+    const insertResult = await users.insertOne({
+      email: session.user.email,
+      createdAt: now,
+      updatedAt: now,
+      encryptedHealthData: null,
+    });
+    user = await users.findOne({ _id: insertResult.insertedId });
   }
 
   let healthData = null;

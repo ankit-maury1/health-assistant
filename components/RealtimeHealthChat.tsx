@@ -1544,10 +1544,19 @@ export default function RealtimeHealthChat({ wsUrl }: RealtimeHealthChatProps) {
           fetch("/api/user/profile"),
           fetch("/api/predictions/history?limit=5"),
         ]);
-        if (!profileRes.ok || !historyRes.ok) throw new Error("Failed to load health context");
-        const profileJson = await profileRes.json();
-        const historyJson = await historyRes.json();
+
+        const isProfileFatal = profileRes.ok === false && ![401, 404].includes(profileRes.status);
+        const isHistoryFatal = historyRes.ok === false && ![401, 404].includes(historyRes.status);
+
+        if (isProfileFatal || isHistoryFatal) {
+          throw new Error("Failed to load health context");
+        }
+
+        const profileJson = profileRes.ok ? await profileRes.json() : { healthData: {} };
+        const historyJson = historyRes.ok ? await historyRes.json() : { history: [] };
+
         setHealthData(profileJson.healthData ?? {});
+
         const sorted = [...(historyJson.history ?? [])].sort(
           (a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime(),
         );

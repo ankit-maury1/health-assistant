@@ -17,13 +17,13 @@ export default function Navbar() {
   ];
 
   return (
-    <header className="w-full bg-white/90 backdrop-blur border-b border-slate-200 fixed top-0 left-0 right-0 z-40">
+    <header className="sticky top-0 z-50 w-full border-b border-white/20 bg-gradient-to-r from-[var(--gradient-start)] via-[var(--gradient-mid)] to-[var(--gradient-end)] bg-opacity-100 shadow-lg backdrop-blur-lg dark:from-[var(--gradient-start)] dark:via-[var(--gradient-mid)] dark:to-[var(--gradient-end)] dark:bg-opacity-100">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 md:px-6">
-        <Link href="/" className="font-bold text-lg text-slate-800">Health Predict</Link>
+        <Link href="/" className="font-bold text-lg text-white dark:text-slate-100">Health Predict</Link>
 
         <nav className="hidden items-center gap-3 md:flex">
           {navLinks.map((link) => (
-            <Link key={link.href} href={link.href} className="text-sm hover:text-indigo-600">
+            <Link key={link.href} href={link.href} className="text-sm text-white hover:text-indigo-200 dark:text-white">
               {link.label}
             </Link>
           ))}
@@ -32,16 +32,16 @@ export default function Navbar() {
 
           {status === "authenticated" && session?.user?.email ? (
             <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-700">{session.user.name}</span>
+              <span className="text-sm text-white">{session.user.name}</span>
               <button
                 onClick={() => signOut({ callbackUrl: "/" })}
-                className="rounded border border-slate-300 px-3 py-1 text-sm hover:bg-slate-100"
+                className="rounded border border-white/40 px-3 py-1 text-sm text-white hover:bg-white/10"
               >
                 Sign Out
               </button>
             </div>
           ) : status !== "loading" ? (
-            <Link href="/auth/signin" className="rounded border border-indigo-500 px-3 py-1 text-sm text-indigo-600 hover:bg-indigo-50">
+            <Link href="/auth/signin" className="rounded border border-white/40 px-3 py-1 text-sm text-white hover:bg-white/10">
               Sign In
             </Link>
           ) : null}
@@ -61,27 +61,27 @@ export default function Navbar() {
       </div>
 
       {isMenuOpen ? (
-        <div className="border-t border-slate-200 bg-white px-4 py-3 md:hidden">
+        <div className="border-t border-white/20 bg-gradient-to-r from-[var(--gradient-start)] via-[var(--gradient-mid)] to-[var(--gradient-end)] bg-opacity-95 dark:bg-opacity-90 px-4 py-3 md:hidden">
           <div className="flex flex-col gap-3">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 onClick={() => setIsMenuOpen(false)}
-                className="text-sm font-medium text-slate-700 hover:text-indigo-600"
+                className="text-sm font-medium text-white hover:text-indigo-200"
               >
                 {link.label}
               </Link>
             ))}
 
-            {status === "loading" && <span className="text-sm text-slate-500">Loading...</span>}
+            {status === "loading" && <span className="text-sm text-white/90">Loading...</span>}
 
             {status === "authenticated" && session?.user?.email ? (
               <>
-                <span className="text-sm text-slate-700">{session.user.name}</span>
+                <span className="text-sm text-white">{session.user.name}</span>
                 <button
                   onClick={() => signOut({ callbackUrl: "/" })}
-                  className="w-fit rounded border border-slate-300 px-3 py-1 text-sm hover:bg-slate-100"
+                  className="w-fit rounded border border-white/40 px-3 py-1 text-sm text-white hover:bg-white/10"
                 >
                   Sign Out
                 </button>
@@ -90,7 +90,7 @@ export default function Navbar() {
               <Link
                 href="/auth/signin"
                 onClick={() => setIsMenuOpen(false)}
-                className="w-fit rounded border border-indigo-500 px-3 py-1 text-sm text-indigo-600 hover:bg-indigo-50"
+                className="w-fit rounded border border-white/40 px-3 py-1 text-sm text-white hover:bg-white/10"
               >
                 Sign In
               </Link>
