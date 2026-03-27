@@ -19,7 +19,7 @@ export default function Navbar() {
   return (
     <header className="sticky top-0 z-50 w-full border-b border-white/20 bg-gradient-to-r from-[var(--gradient-start)] via-[var(--gradient-mid)] to-[var(--gradient-end)] bg-opacity-100 shadow-lg backdrop-blur-lg dark:from-[var(--gradient-start)] dark:via-[var(--gradient-mid)] dark:to-[var(--gradient-end)] dark:bg-opacity-100">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 md:px-6">
-        <Link href="/" className="font-bold text-lg text-white dark:text-slate-100">Health Predict</Link>
+        <Link href="/" className="font-bold text-lg text-white dark:text-slate-100">Health Assistant</Link>
 
         <nav className="hidden items-center gap-3 md:flex">
           {navLinks.map((link) => (
