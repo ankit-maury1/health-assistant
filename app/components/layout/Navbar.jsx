@@ -10,7 +10,7 @@ export default function Navbar() {
 
   const navLinks = [
     { href: "/dashboard", label: "Dashboard" },
-    { href: "/dashboard/settings", label: "Settings" },
+    { href: "/dashboard/settings", label: "Profile" },
     { href: "/diabetes", label: "Diabetes" },
     { href: "/heart-disease", label: "Heart" },
     { href: "/voice-assistant", label: "Voice AI" },
